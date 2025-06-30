@@ -43,6 +43,11 @@ def serve(path):
             return "index.html not found", 404
 
 
+import os
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # 從環境變數讀取 Render 提供的 PORT，如果沒有則預設為 5000 (方便本地開發)
+    port = int(os.environ.get('PORT', 5000))
+    # 務必將 host 設為 '0.0.0.0'
+    app.run(host='0.0.0.0', port=port)
 
