@@ -63,11 +63,20 @@ def detect_bear():
         
         return jsonify(response_data)
 
-    except requests.exceptions.RequestException as e:
-        return jsonify({"success": False, "error": f"呼叫模型失敗: {e}"}), 503
     except Exception as e:
-        return jsonify({"success": False, "error": f"伺服器內部錯誤: {str(e)}"}), 500
-
+    # 在回傳 500 錯誤前，先在 Render 的後端日誌中印出詳細的錯誤資訊
+    print("----------- UNEXPECTED ERROR -----------")
+    print(f"Error Type: {type(e).__name__}")
+    print(f"Error Details: {e}")
+    
+    # 引入 traceback 模組來印出最詳細的錯誤堆疊
+    import traceback
+    traceback.print_exc()
+    
+    print("----------------------------------------")
+    
+    # 同樣回傳 500 錯誤給前端，但後端日誌已記錄下詳細原因
+    return jsonify({"success": False, "error": "伺服器發生未預期的錯誤，請查看後端日誌"}), 500
 # 啟動伺服器
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
