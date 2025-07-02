@@ -48,7 +48,7 @@ def detect_bear():
 
         if detections:
             for item in detections:
-                if item.get('label') == 'bear':
+                if item.get('label') == 'kumay':
                     bear_detected = True
                     box = item.get('box')
                     score = item.get('score', 0)
