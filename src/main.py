@@ -33,7 +33,7 @@ def detect_bear():
         hf_response = requests.post(HUGGING_FACE_API_URL, files=hf_files)
         hf_response.raise_for_status()
         detections = hf_response.json()
-
+print(f"DEBUG: 從 API 收到的原始資料: {detections}")
         bear_detected = False
         highest_confidence = 0.0
 
