@@ -93,6 +93,14 @@ def detect_bear():
         return jsonify({"success": False, "error": f"伺服器內部錯誤: {str(e)}"}), 500
 
 # 這段是為了讓你在本機測試用，Render 會忽略它
+# main.py 的最下方
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    # Render 平台會透過環境變數 'PORT' 告訴我們應該使用哪個通訊埠
+    # 我們從環境變數讀取它，如果沒有就預設為 10000
+    port = int(os.environ.get('PORT', 10000))
+    
+    # 為了讓外部網路可以連線，host 必須設定為 '0.0.0.0'
+    # debug=False 是生產環境的安全作法
+    app.run(host='0.0.0.0', port=port, debug=False)
 
