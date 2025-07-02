@@ -1,4 +1,4 @@
-# main.py (已移除畫圖功能的最終版本)
+# main.py (已修正縮排的版本)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -64,19 +64,21 @@ def detect_bear():
         return jsonify(response_data)
 
     except Exception as e:
-    # 在回傳 500 錯誤前，先在 Render 的後端日誌中印出詳細的錯誤資訊
-    print("----------- UNEXPECTED ERROR -----------")
-    print(f"Error Type: {type(e).__name__}")
-    print(f"Error Details: {e}")
-    
-    # 引入 traceback 模組來印出最詳細的錯誤堆疊
-    import traceback
-    traceback.print_exc()
-    
-    print("----------------------------------------")
-    
-    # 同樣回傳 500 錯誤給前端，但後端日誌已記錄下詳細原因
-    return jsonify({"success": False, "error": "伺服器發生未預期的錯誤，請查看後端日誌"}), 500
+        # ✅【修改處】以下整個區塊都向內縮排，使其屬於 except 的一部分
+        # 在回傳 500 錯誤前，先在 Render 的後端日誌中印出詳細的錯誤資訊
+        print("----------- UNEXPECTED ERROR -----------")
+        print(f"Error Type: {type(e).__name__}")
+        print(f"Error Details: {e}")
+        
+        # 引入 traceback 模組來印出最詳細的錯誤堆疊
+        import traceback
+        traceback.print_exc()
+        
+        print("----------------------------------------")
+        
+        # 同樣回傳 500 錯誤給前端，但後端日誌已記錄下詳細原因
+        return jsonify({"success": False, "error": "伺服器發生未預期的錯誤，請查看後端日誌"}), 500
+
 # 啟動伺服器
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
