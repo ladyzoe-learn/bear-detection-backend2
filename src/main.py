@@ -1,9 +1,8 @@
-# main.py (已修正縮排的版本)
+# main.py (最終修正版)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
-# 移除了 ImageDraw 和 ImageFont
 from PIL import Image
 import io
 import base64
@@ -32,18 +31,18 @@ def detect_bear():
         hf_files = {'file': (file.filename, image_bytes, file.mimetype)}
         hf_response = requests.post(HUGGING_FACE_API_URL, files=hf_files)
         hf_response.raise_for_status()
-        detections = hf_response.json()
-        print(f"DEBUG: 從 API 收到的原始資料: {detections}")
-        
+        api_response = hf_response.json() # 將變數改名以避免混淆
+
         bear_detected = False
         highest_confidence = 0.0
 
-        # 2. 遍歷偵測結果，只判斷不畫圖
-        if detections:
-            for item in detections:
-                if item.get('label') == 'kumay':
+        # 2. ✅【關鍵修改處】直接遍歷 api_response 字典中 'detections' 鍵對應的列表
+        detection_list = api_response.get('detections', []) # 使用 .get() 更安全
+        if isinstance(detection_list, list):
+            for item in detection_list:
+                if isinstance(item, dict) and item.get('label') == 'kumay':
                     bear_detected = True
-                    score = item.get('score', 0)
+                    score = item.get('confidence', 0) # API 回傳的是 confidence
                     
                     if score > highest_confidence:
                         highest_confidence = score
@@ -65,19 +64,15 @@ def detect_bear():
         return jsonify(response_data)
 
     except Exception as e:
-        # ✅【修改處】以下整個區塊都向內縮排，使其屬於 except 的一部分
-        # 在回傳 500 錯誤前，先在 Render 的後端日誌中印出詳細的錯誤資訊
         print("----------- UNEXPECTED ERROR -----------")
         print(f"Error Type: {type(e).__name__}")
         print(f"Error Details: {e}")
         
-        # 引入 traceback 模組來印出最詳細的錯誤堆疊
         import traceback
         traceback.print_exc()
         
         print("----------------------------------------")
         
-        # 同樣回傳 500 錯誤給前端，但後端日誌已記錄下詳細原因
         return jsonify({"success": False, "error": "伺服器發生未預期的錯誤，請查看後端日誌"}), 500
 
 # 啟動伺服器
