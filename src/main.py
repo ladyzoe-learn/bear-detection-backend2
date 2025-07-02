@@ -12,7 +12,7 @@ app = Flask(__name__)
 CORS(app)  # 允許所有來源的跨域請求
 
 # Hugging Face 模型的 API URL
-HUGGING_FACE_API_URL = "https://ladyzoe-bear-detector-api-docker.hf.space/detect/"
+HUGGING_FACE_API_URL = "https://ladyzoe-bear-detector-api-docker.hf.space/predict"
 
 @app.route('/api/detect', methods=['POST'])
 def detect_bear():
