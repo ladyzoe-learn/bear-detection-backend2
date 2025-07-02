@@ -1,16 +1,16 @@
-# main.py (已移除畫圖功能)
+# main.py (已移除畫圖功能的最終版本)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
-# 移除了 ImageDraw 和 ImageFont，因為不再需要畫圖
+# 移除了 ImageDraw 和 ImageFont
 from PIL import Image
 import io
 import base64
 import os
 
 app = Flask(__name__)
-CORS(app)  # 允許所有來源的跨域請求
+CORS(app)
 
 # Hugging Face 模型的 API URL
 HUGGING_FACE_API_URL = "https://ladyzoe-bear-detector-api-docker.hf.space/predict"
@@ -26,10 +26,9 @@ def detect_bear():
         return jsonify({"success": False, "error": "沒有選擇檔案"}), 400
 
     try:
-        # 讀取圖片檔案
         image_bytes = file.read()
 
-        # 1. 呼叫 Hugging Face 模型進行偵測
+        # 1. 呼叫 Hugging Face 模型
         hf_files = {'file': (file.filename, image_bytes, file.mimetype)}
         hf_response = requests.post(HUGGING_FACE_API_URL, files=hf_files)
         hf_response.raise_for_status()
@@ -38,7 +37,6 @@ def detect_bear():
         bear_detected = False
         highest_confidence = 0.0
 
-        # --- 畫圖相關的程式碼已完全移除 ---
         # 2. 遍歷偵測結果，只判斷不畫圖
         if detections:
             for item in detections:
@@ -50,13 +48,12 @@ def detect_bear():
                         highest_confidence = score
         
         # 3. 將「原始」圖片轉換成 Base64
-        # 因為沒有畫圖，這裡的 image 就是原始圖片
         image = Image.open(io.BytesIO(image_bytes))
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
         processed_image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        # 4. 建立符合前端需求的 JSON 回應
+        # 4. 建立 JSON 回應
         response_data = {
             "success": True,
             "bear_detected": bear_detected,
@@ -71,7 +68,7 @@ def detect_bear():
     except Exception as e:
         return jsonify({"success": False, "error": f"伺服器內部錯誤: {str(e)}"}), 500
 
-# main.py 的最下方 (這部分不變)
+# 啟動伺服器
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
