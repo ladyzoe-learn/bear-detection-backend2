@@ -6,7 +6,8 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
-
+import os
+ 
 app = Flask(__name__)
 CORS(app)  # 允許所有來源的跨域請求
 
