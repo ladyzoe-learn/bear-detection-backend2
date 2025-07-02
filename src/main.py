@@ -1,63 +1,98 @@
-from flask import Flask, request, jsonify, render_template
-from flask_cors import CORS
-import pandas as pd # 引入 pandas
-import os # 引入 os
+# main.py
 
-# 載入 YOLOv5 模型 (這部分維持不變)
-# 注意：這裡的路徑是相對於您在 Render 上的部署環境，請確認是否正確
-# model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt') 
-# model.eval()
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import requests
+from PIL import Image, ImageDraw, ImageFont
+import io
+import base64
 
 app = Flask(__name__)
 CORS(app)  # 允許所有來源的跨域請求
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+# Hugging Face 模型的 API URL
+HUGGING_FACE_API_URL = "https://ladyzoe-bear-detector-api-docker.hf.space/detect/"
 
-# 既有的 /predict 路由維持不變
-@app.route('/predict', methods=['POST'])
-def predict():
-    # 這裡的 AI 預測邏輯完全不變
-    # ... (您原本的預測程式碼)
-    return jsonify({'result': 'dummy_prediction'}) # 假設的回傳值
+@app.route('/api/detect', methods=['POST'])
+def detect_bear():
+    if 'image' not in request.files:
+        return jsonify({"success": False, "error": "沒有上傳圖片檔案"}), 400
 
-# --- 我們新增的程式碼開始 ---
+    file = request.files['image']
 
-@app.route('/api/sightings', methods=['GET'])
-def get_sightings():
-    """
-    提供台灣黑熊出沒紀錄的 API 端點。
-    """
-    csv_path = '台灣黑熊.csv' # CSV 檔案的路徑
-
-    # 檢查 CSV 檔案是否存在
-    if not os.path.exists(csv_path):
-        return jsonify({"error": "Sighting data not found"}), 404
+    if file.filename == '':
+        return jsonify({"success": False, "error": "沒有選擇檔案"}), 400
 
     try:
-        # 使用 pandas 讀取 CSV 檔案 (預設使用 UTF-8)
-        df = pd.read_csv(csv_path)
+        # 讀取圖片檔案
+        image_bytes = file.read()
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        # 確認必要的欄位是否存在
-        required_columns = ['verbatimlatitude', 'verbatimlongitude', 'vernacularname', 'eventdate']
-        if not all(col in df.columns for col in required_columns):
-            return jsonify({"error": "CSV file is missing required columns"}), 500
-        
-        # 將 DataFrame 轉換為 JSON 格式，並設定 orient='records'
-        # 這會產生一個 list of dictionaries，非常適合前端使用
-        # 例如: [ { "col1": "valA", "col2": "valB" }, { ... } ]
-        sighting_data = df.to_dict(orient='records')
-        
-        return jsonify(sighting_data)
+        # 1. 呼叫 Hugging Face 模型進行偵測
+        hf_files = {'file': (file.filename, image_bytes, file.mimetype)}
+        hf_response = requests.post(HUGGING_FACE_API_URL, files=hf_files)
+        hf_response.raise_for_status()
+        detections = hf_response.json()
 
+        bear_detected = False
+        highest_confidence = 0.0
+
+        # 2. 在圖片上繪製邊界框
+        draw = ImageDraw.Draw(image)
+        try:
+            # 嘗試載入稍大一點的字型
+            font = ImageFont.truetype("arial.ttf", 20)
+        except IOError:
+            # 如果找不到字型，則使用預設字型
+            font = ImageFont.load_default()
+
+        if detections:
+            for item in detections:
+                if item.get('label') == 'bear':
+                    bear_detected = True
+                    box = item.get('box')
+                    score = item.get('score', 0)
+                    
+                    if score > highest_confidence:
+                        highest_confidence = score
+
+                    # 繪製矩形框
+                    draw.rectangle(box, outline="lime", width=5)
+                    
+                    # 準備標籤文字
+                    label = f"{item['label']}: {score:.2f}"
+                    
+                    # 計算文字位置
+                    text_position = [box[0], box[1] - 25]
+                    if text_position[1] < 0:
+                        text_position[1] = box[1] + 5
+                        
+                    # 繪製文字背景和文字
+                    text_bbox = draw.textbbox(text_position, label, font=font)
+                    draw.rectangle(text_bbox, fill="lime")
+                    draw.text(text_position, label, fill="black", font=font)
+
+        # 3. 將處理後的圖片轉換成 Base64
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        processed_image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        # 4. 建立符合前端需求的 JSON 回應
+        response_data = {
+            "success": True,
+            "bear_detected": bear_detected,
+            "confidence": highest_confidence,
+            "processed_image": processed_image_base64
+        }
+        
+        return jsonify(response_data)
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"success": False, "error": f"呼叫模型失敗: {e}"}), 503
     except Exception as e:
-        # 如果在處理過程中發生任何錯誤，回傳 500 錯誤
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": f"伺服器內部錯誤: {str(e)}"}), 500
 
-# --- 我們新增的程式碼結束 ---
-
-
+# 這段是為了讓你在本機測試用，Render 會忽略它
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
 
