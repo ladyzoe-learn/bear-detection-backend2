@@ -1,6 +1,6 @@
 flask
 flask-cors
 requests
-Pillow
+pillow
 opencv-python
 ffmpeg-python
