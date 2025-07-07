@@ -42,7 +42,7 @@ LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET', 'YOUR_CHANNEL_SECRET
 # 設定要接收預警訊息的使用者或群組 ID。
 # 這通常是一個固定的使用者 ID 或群組 ID。
 # 部署時，請務必替換 'YOUR_LINE_USER_OR_GROUP_ID' 為您實際的目標 ID。
-LINE_NOTIFY_TARGET_ID = os.environ.get('LINE_NOTIFY_TARGET_ID', 'YOUR_LINE_USER_OR_GROUP_ID')
+LINE_PUSH_TARGET_ID  = os.environ.get('LINE_PUSH_TARGET_ID ', 'YOUR_LINE_USER_OR_GROUP_ID')
 
 # 初始化 LINE BOT API 客戶端
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
