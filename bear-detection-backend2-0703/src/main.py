@@ -9,7 +9,8 @@ import tempfile
 import ffmpeg
 import traceback
 import logging
-import shutil # 【新增】引入 shutil 模組用於目錄操作
+import shutil
+import collections # 【新增】引入 collections 模組，用於 deque
 
 app = Flask(__name__)
 CORS(app)
@@ -20,7 +21,7 @@ logging.basicConfig(level=logging.INFO,
 
 HUGGING_FACE_API_URL = "https://ladyzoe-bear-detector-api-docker.hf.space/predict"
 
-# 【新增】設定一個明確的臨時目錄路徑，避免 tempfile.TemporaryDirectory 可能遇到的權限問題
+# 設定一個明確的臨時目錄路徑，避免 tempfile.TemporaryDirectory 可能遇到的權限問題
 # 這裡假設 'temp_frames_storage' 子目錄與你的應用程式腳本在同一層
 # 確保這個目錄在應用程式啟動前或創建臨時目錄前存在
 CUSTOM_TEMP_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_frames_storage')
@@ -96,7 +97,17 @@ def detect_bear_video():
         return jsonify({"success": False, "error": "沒有選擇影片"}), 400
 
     video_path = None # 初始化為 None，確保 finally 區塊可以安全地檢查
-    frames_dir = None # 【修改】初始化為 None，用於手動創建的臨時目錄
+    frames_dir = None # 初始化為 None，用於手動創建的臨時目錄
+
+    # 【新增】用於追蹤最近5個影格的熊檢測狀態 (True/False)
+    # collections.deque 是一個高效的雙端佇列，maxlen=5 會自動保持最多5個元素
+    bear_detection_history = collections.deque(maxlen=5)
+    
+    # 【修改】將 results 變數更名為 final_results，以明確其最終輸出目的
+    final_results = [] 
+
+    # 【新增】設定黑熊預警的信心度閾值
+    BEAR_WARNING_CONFIDENCE_THRESHOLD = 0.50 # 50%
 
     try:
         # 將上傳的影片保存到臨時檔案
@@ -111,9 +122,7 @@ def detect_bear_video():
         fixed_height = 360  # 縮放後的高度
         output_image_format = "png" # 輸出圖片格式，按照 batch_extract_frames 預設為 PNG
         
-        results = [] # 儲存每個影格的檢測結果
-        
-        # 【修改】使用 tempfile.mkdtemp() 手動創建臨時目錄，並指定路徑
+        # 使用 tempfile.mkdtemp() 手動創建臨時目錄，並指定路徑
         frames_dir = tempfile.mkdtemp(dir=CUSTOM_TEMP_STORAGE_DIR)
         
         # output_%05d.png 是 batch_extract_frames 中的命名模式
@@ -151,35 +160,60 @@ def detect_bear_video():
 
         app.logger.info(f"開始對 {len(frame_files)} 個影格進行熊檢測...")
         for frame_index_zero_based, frame_file in enumerate(frame_files): # 0-based index
-            # 為了和 batch_extract_frames 的 output_%05d.png 對應，我們可以假設這些是連續的影格
-            # 或者直接使用 enumerate 的 index 作為邏輯上的 frame_index
             logical_frame_index = frame_index_zero_based + 1 
             frame_path = os.path.join(frames_dir, frame_file)
+            
+            # 【新增】為當前影格初始化結果字典，包含預警標誌
+            current_frame_result = {
+                "frame_index": logical_frame_index,
+                "bear_detected": False, 
+                "confidence": 0.0,      
+                "bear_warning_triggered": False # 預設為 False
+            }
+
             try:
                 with open(frame_path, 'rb') as f:
                     image_bytes = f.read()
                 
-                # 這裡要特別注意 MIME type 變成了 PNG
                 bear_detected, confidence = detect_bear_from_image_bytes(
                     image_bytes, 
                     f"original_video_frame_{logical_frame_index}.{output_image_format}", # 檔案名稱
                     f"image/{output_image_format}" # MIME 類型是 image/png
                 )
-                results.append({
-                    "frame_index": logical_frame_index,
-                    "bear_detected": bear_detected,
-                    "confidence": confidence
-                })
+                
+                # 更新當前影格的檢測結果
+                current_frame_result["bear_detected"] = bear_detected
+                current_frame_result["confidence"] = confidence
+
+                # 【修改】判斷是否為「有效檢測」：偵測到熊且信心度達到閾值
+                is_valid_bear_detection = bear_detected and (confidence >= BEAR_WARNING_CONFIDENCE_THRESHOLD)
+                
+                # 【修改】更新熊檢測歷史記錄，只將有效檢測納入計算
+                bear_detection_history.append(is_valid_bear_detection)
+
+                # 【新增】檢查是否觸發黑熊預警 (5張圖片中有2張被判定為黑熊)
+                # sum(1 for detected in bear_detection_history if detected) 計算 deque 中 True 的數量
+                if sum(1 for detected in bear_detection_history if detected) >= 2:
+                    current_frame_result["bear_warning_triggered"] = True
+                    app.logger.warning(
+                        f"在影格 {logical_frame_index} 處觸發黑熊預警！"
+                        f"最近 {len(bear_detection_history)} 影格中有 {sum(1 for detected in bear_detection_history if detected)} 個有效偵測到黑熊。"
+                    )
+                
+                # 將當前影格的完整結果添加到最終結果列表
+                final_results.append(current_frame_result)
+
             except Exception as e:
                 app.logger.warning(f"處理影格 '{frame_file}' 時發生錯誤: {e}")
-                # 不因單一影格處理失敗而中斷整個影片的處理
+                # 即使處理失敗，也將包含預設值或部分結果的字典添加到 final_results
+                final_results.append(current_frame_result) 
             
         app.logger.info("所有影格檢測完成。")
             
         return jsonify({
             "success": True,
-            "total_frames_processed": len(results),
-            "results": results
+            "total_frames_processed": len(final_results), # 【修改】回傳 final_results 的長度
+            "results": final_results # 【修改】回傳 final_results
         })
 
     except Exception as e:
@@ -187,11 +221,9 @@ def detect_bear_video():
         return jsonify({"success": False, "error": "影片分析時發生未預期的伺服器錯誤。"}), 500
     
     finally:
-        # 【修改】手動清理創建的臨時目錄及其內容
-        # 確保臨時影格目錄在處理完畢後被刪除
+        # 手動清理創建的臨時目錄及其內容
         if frames_dir and os.path.exists(frames_dir):
             try:
-                import shutil
                 shutil.rmtree(frames_dir)
                 app.logger.info(f"已刪除臨時影格目錄: {frames_dir}")
             except OSError as e:
