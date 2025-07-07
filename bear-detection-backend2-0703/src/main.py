@@ -258,22 +258,22 @@ def detect_bear_video():
         return jsonify({"success": False, "error": "影片分析時發生未預期的伺服器錯誤。"}), 500
 
     finally:
-        # 手動清理創建的臨時目錄及其內容
-        if frames_dir and os.path.exists(frames_dir):
-            try:
-                shutil.rmtree(frames_dir)
-                app.logger.info(f"已刪除臨時影格目錄: {frames_dir}")
-            except OSError as e:
-                app.logger.error(f"無法刪除臨時影格目錄 {frames_dir}: {e}")
+            # 手動清理創建的臨時目錄及其內容
+            if frames_dir and os.path.exists(frames_dir):
+                try:
+                    shutil.rmtree(frames_dir)
+                    app.logger.info(f"已刪除臨時影格目錄: {frames_dir}")
+                except OSError as e:
+                    app.logger.error(f"無法刪除臨時影格目錄 {frames_dir}: {e}")
 
-        # 確保臨時影片檔案在處理完畢後被刪除
-        if video_path and os.path.exists(video_path):
-            os.unlink(video_path)
-            app.logger.info(f"已刪除臨時影片檔案: {video_path}")
+            # 確保臨時影片檔案在處理完畢後被刪除
+            if video_path and os.path.exists(video_path):
+                os.unlink(video_path)
+                app.logger.info(f"已刪除臨時影片檔案: {video_path}")
 
 
-# 啟動 Flask 應用程式
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    # debug=False 在生產環境中是最佳實踐
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # 啟動 Flask 應用程式
+    if __name__ == '__main__':
+        port = int(os.environ.get('PORT', 10000))
+        # debug=False 在生產環境中是最佳實踐
+        app.run(host='0.0.0.0', port=port, debug=False)
