@@ -272,8 +272,8 @@ def detect_bear_video():
                 app.logger.info(f"已刪除臨時影片檔案: {video_path}")
 
 
-    # 啟動 Flask 應用程式
-    if __name__ == '__main__':
-        port = int(os.environ.get('PORT', 10000))
-        # debug=False 在生產環境中是最佳實踐
-        app.run(host='0.0.0.0', port=port, debug=False)
+# 啟動 Flask 應用程式
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    # debug=False 在生產環境中是最佳實踐
+    app.run(host='0.0.0.0', port=port, debug=False)
