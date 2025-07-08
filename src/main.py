@@ -80,10 +80,39 @@ def is_bear_detected(api_response):
 
 @app.route('/api/detect', methods=['POST'])
 def detect_bear_image():
-    # ... (此處省略原有的圖片處理程式碼，您可以保留它，我們主要新增影片功能)
-    # 為了簡潔，這裡先假設主要用影片功能，您可以將之前的圖片處理邏輯放回來
-    return jsonify({"message": "This is the image detection endpoint. Please use /api/analyze_video for video analysis."})
+    if 'image' not in request.files:
+        return jsonify({"success": False, "error": "沒有上傳圖片檔案"}), 400
 
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "沒有選擇檔案"}), 400
+
+    try:
+        image_bytes = file.read()
+        
+        # 呼叫共用函式進行偵測
+        api_response = detect_objects_in_image_data(image_bytes)
+        
+        if not api_response:
+             return jsonify({"success": False, "error": "模型偵測失敗"}), 500
+
+        bear_is_detected = is_bear_detected(api_response)
+        
+        # 準備回傳給前端的資料
+        response_data = {
+            "success": True,
+            "bear_detected": bear_is_detected,
+            # 這裡我們先回傳一個固定的 confidence 和原始圖片
+            # 因為詳細的框選邏輯目前在影片分析那邊
+            # 您可以根據需求再將詳細的框選和信心度邏輯加回來
+            "confidence": 0.99 if bear_is_detected else 0,
+            "processed_image": base64.b64encode(image_bytes).decode('utf-8')
+        }
+        return jsonify(response_data)
+        
+    except Exception as e:
+        print(f"圖片偵測時發生錯誤: {e}")
+        return jsonify({"success": False, "error": "伺服器處理圖片時發生錯誤"}), 500
 
 # --- ⭐️⭐️⭐️ 新增的影片分析端點 ⭐️⭐️⭐️ ---
 @app.route('/api/analyze_video', methods=['POST'])
@@ -198,7 +227,7 @@ def analyze_video():
 def get_bear_map():
     # ... (省略地圖程式碼，維持原樣)
     try:
-        file_path = '台灣黑熊.csv' 
+        file_path = 'src/台灣黑熊.csv' 
         df = pd.read_csv(file_path)
         taiwan_map = folium.Map(location=[23.97565, 120.97388], zoom_start=7)
         marker_cluster = MarkerCluster().add_to(taiwan_map)
