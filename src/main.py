@@ -1,4 +1,5 @@
-# main.py (最終修正版)
+# main.py (已整合 LINE 通知功能)
+
 import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -12,11 +13,53 @@ import folium
 from folium.plugins import HeatMap
 from folium.plugins import MarkerCluster
 
+# --- 新增區塊 START ---
+from linebot import LineBotApi
+from linebot.models import TextSendMessage
+from linebot.exceptions import LineBotApiError
+# --- 新增區塊 END ---
+
 app = Flask(__name__)
 CORS(app)
 
 # Hugging Face 模型的 API URL
 HUGGING_FACE_API_URL = "https://ladyzoe-bear-detector-api-docker.hf.space/predict"
+
+# --- 新增區塊 START ---
+
+# 1. 從環境變數讀取 LINE Channel Access Token
+#    請務必在 Render 後台設定好這個環境變數！
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+
+# 2. 初始化 LineBotApi
+line_bot_api = None
+if LINE_CHANNEL_ACCESS_TOKEN:
+    try:
+        line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+        print("LINE Bot API initialized successfully.")
+    except Exception as e:
+        print(f"Failed to initialize LINE Bot API: {e}")
+else:
+    print("LINE_CHANNEL_ACCESS_TOKEN not found in environment. LINE notification feature is disabled.")
+
+# 3. 建立發送 LINE 廣播訊息的函式
+def send_line_broadcast_message(message_text):
+    if not line_bot_api:
+        print("LINE Bot API not initialized. Cannot send message.")
+        return
+
+    try:
+        # 使用 broadcast 方法對所有已加入的好友發送訊息
+        line_bot_api.broadcast(TextSendMessage(text=message_text))
+        print("LINE broadcast message sent successfully.")
+    except LineBotApiError as e:
+        print(f"Error sending LINE broadcast message: {e.status_code} {e.error.message}")
+        print(f"Details: {e.error.details}")
+    except Exception as e:
+        print(f"An unexpected error occurred when sending LINE message: {e}")
+
+# --- 新增區塊 END ---
+
 
 @app.route('/api/detect', methods=['POST'])
 def detect_bear():
@@ -31,33 +74,42 @@ def detect_bear():
     try:
         image_bytes = file.read()
 
-        # 1. 呼叫 Hugging Face 模型
+        # 呼叫 Hugging Face 模型
         hf_files = {'file': (file.filename, image_bytes, file.mimetype)}
         hf_response = requests.post(HUGGING_FACE_API_URL, files=hf_files)
         hf_response.raise_for_status()
-        api_response = hf_response.json() # 將變數改名以避免混淆
+        api_response = hf_response.json()
 
         bear_detected = False
         highest_confidence = 0.0
 
-        # 2. ✅【關鍵修改處】直接遍歷 api_response 字典中 'detections' 鍵對應的列表
-        detection_list = api_response.get('detections', []) # 使用 .get() 更安全
+        detection_list = api_response.get('detections', [])
         if isinstance(detection_list, list):
             for item in detection_list:
+                # 您的模型標籤是 'kumay'
                 if isinstance(item, dict) and item.get('label') == 'kumay':
                     bear_detected = True
-                    score = item.get('confidence', 0) # API 回傳的是 confidence
+                    score = item.get('confidence', 0)
                     
                     if score > highest_confidence:
                         highest_confidence = score
+                    
+                    # ✅【關鍵修改處】偵測到黑熊，立即發送 LINE 通知
+                    # 我們將發送邏輯放在這裡，並在發送後跳出迴圈
+                    print("熊 ('kumay') detected! Sending LINE notification...")
+                    alert_message = "警告：偵測到台灣黑熊出沒，請注意安全！\nWarning: Formosan Black Bear ('kumay') detected. Please be cautious!"
+                    send_line_broadcast_message(alert_message)
+                    
+                    # 找到了就發送通知並跳出迴圈，避免同一張圖偵測到多隻熊而重複發送
+                    break 
         
-        # 3. 將「原始」圖片轉換成 Base64
+        # 將「原始」圖片轉換成 Base64
         image = Image.open(io.BytesIO(image_bytes))
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
         processed_image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        # 4. 建立 JSON 回應
+        # 建立 JSON 回應
         response_data = {
             "success": True,
             "bear_detected": bear_detected,
@@ -68,18 +120,14 @@ def detect_bear():
         return jsonify(response_data)
 
     except Exception as e:
-        
         print("----------- UNEXPECTED ERROR -----------")
         print(f"Error Type: {type(e).__name__}")
         print(f"Error Details: {e}")
-        
-        import traceback
         traceback.print_exc()
-        
         print("----------------------------------------")
-        
         return jsonify({"success": False, "error": "伺服器發生未預期的錯誤，請查看後端日誌"}), 500
     
+# ... (您原本的 /api/map 函式維持不變) ...
 @app.route('/api/map', methods=['GET'])
 def get_bear_map():
     try:
@@ -128,8 +176,8 @@ def get_bear_map():
         traceback.print_exc()
         return jsonify({"success": False, "error": "產生熱點圖時發生錯誤"}), 500
 
+
 # 啟動伺服器
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
