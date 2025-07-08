@@ -3,6 +3,16 @@
 import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+
+app = Flask(__name__)
+
+# 舊的 CORS(app) 設定有時在特定部署環境下不夠明確。
+# 我們改用更精確的設定，明確指定允許哪個來源(前端網址)存取。
+
+# ⚠️ 請注意：根據您錯誤日誌的截圖，您的前端來源(origin)是 'https://bear-detection-app.onrender.com'
+# 這和您之前文字提供的前端網址 'https://bear-detection-frontend.onrender.com' 不一樣。
+# 我們必須使用【日誌中顯示的正確網址】。
+CORS(app, origins=["https://bear-detection-app.onrender.com"])
 import requests
 from PIL import Image
 import io
