@@ -12,6 +12,8 @@ import pandas as pd
 import folium
 from folium.plugins import HeatMap
 from folium.plugins import MarkerCluster
+from flask_caching import Cache
+from datetime import datetime
 
 # --- 新增區塊 START ---
 from linebot import LineBotApi
@@ -128,49 +130,57 @@ def detect_bear():
         return jsonify({"success": False, "error": "伺服器發生未預期的錯誤，請查看後端日誌"}), 500
     
 # ... (您原本的 /api/map 函式維持不變) ...
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 3600})
+cache.init_app(app)
+
 @app.route('/api/map', methods=['GET'])
+@cache.cached(query_string=True)  # 根據不同 query string 快取對應 map
 def get_bear_map():
     try:
-        # 建立地圖物件，中心點設在台灣
-        # 注意：路徑是相對於你執行 main.py 的位置
-        file_path = 'src/台灣黑熊.csv' 
+        file_path = 'src/台灣黑熊.csv'
         df = pd.read_csv(file_path)
 
-        # 建立地圖，中心點設在台灣的中心
+        # 轉換 eventdate 欄位為 datetime
+        df['eventdate'] = pd.to_datetime(df['eventdate'], errors='coerce')
+        df = df.dropna(subset=['eventdate'])  # 避免無效日期造成錯誤
+
+        # 解析前端傳入的起訖日期（若有）
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
+        if start_date and end_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                df = df[(df['eventdate'] >= start_dt) & (df['eventdate'] <= end_dt)]
+            except Exception as e:
+                return jsonify({"success": False, "error": "日期格式錯誤，請使用 YYYY-MM-DD"}), 400
+
+        # 建立地圖物件
         taiwan_map = folium.Map(location=[23.97565, 120.97388], zoom_start=7)
+        marker_cluster = MarkerCluster().add_to(taiwan_map)
 
-        marker_cluster = MarkerCluster().add_to(taiwan_map) # 將集群添加到地圖
-
-        # 遍歷 DataFrame 中的每一行數據，添加標記到集群中
-        for index, row in df.iterrows():
-            # 組合彈出視窗中要顯示的 HTML 內容
-            # 確保你的 CSV 有 'vernacularname', 'eventdate', 'recordedby' 這些欄位
-            # 如果沒有，請根據你的CSV實際欄位調整，或移除這些資訊
+        # 加入地圖標記
+        for _, row in df.iterrows():
             popup_html = f"""
-            <b>物種:</b> {row['vernacularname']}<br>
-            <b>日期:</b> {row['eventdate']}<br>
-            <b>紀錄者:</b> {row['recordedby']}
+                <b>物種:</b> {row['vernacularname']}<br>
+                <b>日期:</b> {row['eventdate'].date()}<br>
+                <b>紀錄者:</b> {row['recordedby']}
             """
-
             iframe = folium.IFrame(popup_html, width=200, height=100)
             popup = folium.Popup(iframe, max_width=200)
-
-            # 在地圖上添加標記 (使用正確的英文欄位名稱)
             folium.Marker(
                 location=[row['verbatimlatitude'], row['verbatimlongitude']],
                 popup=popup,
-                tooltip=f"{row['vernacularname']} - {row['eventdate']}"
-            ).add_to(marker_cluster) # 将標記添加到 marker_cluster，而不是直接添加到地圖
+                tooltip=f"{row['vernacularname']} - {row['eventdate'].date()}"
+            ).add_to(marker_cluster)
 
-        # 將地圖物件轉換成 HTML 字串
+        # 轉成 HTML
         map_html = taiwan_map._repr_html_()
-
         return jsonify({"success": True, "map_html": map_html})
 
     except FileNotFoundError:
         return jsonify({"success": False, "error": "找不到地圖資料檔案"}), 404
     except Exception as e:
-        # 在日誌中印出詳細錯誤，方便除錯
         print(f"地圖產生失敗: {e}")
         import traceback
         traceback.print_exc()
