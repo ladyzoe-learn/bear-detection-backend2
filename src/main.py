@@ -102,6 +102,12 @@ def detect_bear_image():
         
         # 呼叫共用函式進行偵測
         api_response = detect_objects_in_image_data(image_bytes)
+        # 👇 【新增的修改】
+        # 如果偵測到熊，就發送 LINE 通知
+        if bear_is_detected:
+            print("Image detection: Bear detected! Sending LINE notification...")
+            alert_message = "警告：偵測到台灣黑熊出沒（圖片分析），請注意安全！"
+            send_line_broadcast_message(alert_message)
         
         if not api_response:
              return jsonify({"success": False, "error": "模型偵測失敗"}), 500
@@ -153,7 +159,7 @@ def analyze_video():
 
         # --- 偵測邏輯參數 ---
         alert_threshold_seconds = 2.0  # 連續 2 秒觸發警報
-        frames_to_process_per_second = 2 # 每秒抽 2 幀進行分析 (可調整)
+        frames_to_process_per_second = 1 # 每秒抽 1 幀進行分析 (可調整)
         
         # 計算需要跳過的幀數
         frames_to_skip = max(1, int(fps / frames_to_process_per_second))
