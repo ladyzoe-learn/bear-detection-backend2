@@ -5,3 +5,5 @@ Pillow
 pandas
 folium
 line-bot-sdk
+opencv-python
+numpy
