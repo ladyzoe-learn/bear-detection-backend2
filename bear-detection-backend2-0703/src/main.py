@@ -215,7 +215,7 @@ def detect_bear_video():
 
                     # --- 【新增】發送 LINE 預警訊息 ---
                     # 只有在 LINE 通知目標 ID 和 Channel Access Token 設定正確時才嘗試發送
-                    if LINE_NOTIFY_TARGET_ID and LINE_CHANNEL_ACCESS_TOKEN != 'YOUR_CHANNEL_ACCESS_TOKEN':
+                    if LINE_PUSH_TARGET_ID and LINE_CHANNEL_ACCESS_TOKEN != 'YOUR_CHANNEL_ACCESS_TOKEN':
                         try:
                             # 你可以在這裡自訂訊息內容，例如加上時間、地點等資訊
                             warning_message = (
@@ -226,10 +226,10 @@ def detect_bear_video():
                             )
                             # 使用 line_bot_api.push_message 主動推播訊息
                             line_bot_api.push_message(
-                                LINE_NOTIFY_TARGET_ID,
+                                LINE_PUSH_TARGET_ID,
                                 TextMessage(text=warning_message)
                             )
-                            app.logger.info(f"LINE 預警訊息已發送至 {LINE_NOTIFY_TARGET_ID}。")
+                            app.logger.info(f"LINE 預警訊息已發送至 {LINE_PUSH_TARGET_ID}。")
                         except Exception as line_e:
                             app.logger.error(f"發送 LINE 訊息失敗: {line_e}")
                             app.logger.error(f"LINE API 錯誤詳情: {traceback.format_exc()}")
