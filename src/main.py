@@ -226,16 +226,16 @@ def get_bear_map():
 
         for _, row in df.iterrows():
             popup_html = f"""
-                <b>物種:</b> {row['vernacularname']}<br>
+                <b>事件ID:</b> {row['occurrenceid']}<br>
                 <b>日期:</b> {row['eventdate'].date()}<br>
-                <b>紀錄者:</b> {row['recordedby']}
+    
             """
             iframe = folium.IFrame(popup_html, width=200, height=100)
             popup = folium.Popup(iframe, max_width=200)
             folium.Marker(
                 location=[row['verbatimlatitude'], row['verbatimlongitude']],
                 popup=popup,
-                tooltip=f"{row['vernacularname']} - {row['eventdate'].date()}"
+                tooltip=f"{row['occurrenceid']} - {row['eventdate'].date()}"
             ).add_to(marker_cluster)
 
         map_html = taiwan_map._repr_html_()
