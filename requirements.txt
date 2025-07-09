@@ -7,3 +7,4 @@ folium
 line-bot-sdk
 opencv-python
 numpy
+Flask-Caching

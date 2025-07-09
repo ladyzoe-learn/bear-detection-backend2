@@ -1,4 +1,4 @@
-# src/main.py (Final Corrected Version)
+# src/main.py (Final Version with Caching and Flexible Date Filtering)
 
 import traceback
 import requests
@@ -17,24 +17,26 @@ from folium.plugins import MarkerCluster
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 from linebot.exceptions import LineBotApiError
+from datetime import datetime
+from flask_caching import Cache
 
-# 1. 僅保留一組 Flask App 初始化
+# --- Flask App 初始化與設定 ---
 app = Flask(__name__)
-
-# 2. 保留精確的 CORS 設定
-# 確保只允許來自您前端網站的請求
 CORS(app, origins=["https://bear-detection-app.onrender.com"])
 
-# 3. 完整設定 Hugging Face & LINE API 的環境變數讀取
+# --- 快取設定 ---
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 3600})
+cache.init_app(app)
+
+# --- 環境變數讀取 ---
 HF_API_URL = os.getenv("HF_API_URL", "https://ladyzoe-bear-detector-api-docker.hf.space/predict")
-HF_API_TOKEN = os.getenv("HF_API_TOKEN") # 補上讀取 TOKEN
+HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 
-# --- LINE 通知相關函式 (不變) ---
+# --- LINE 通知相關函式 ---
 line_bot_api = None
 if LINE_CHANNEL_ACCESS_TOKEN:
     try:
-        # 修正了廢棄警告，但主要功能不變
         line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
         print("LINE Bot API initialized successfully.")
     except Exception as e:
@@ -56,17 +58,12 @@ def send_line_broadcast_message(message_text):
 
 # --- 偵測相關的共用函式 ---
 def detect_objects_in_image_data(image_bytes):
-    """一個共用函式，接收圖片的二進位數據並回傳偵測結果"""
-    # 4. 檢查 HF_API_TOKEN 是否存在
     if not HF_API_TOKEN:
         print("Error: Hugging Face API Token (HF_API_TOKEN) is not set.")
         return None
-        
     try:
-        # 5. 在請求中加入 Authorization 標頭
         headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
         hf_files = {'file': ('image.jpg', image_bytes, 'image/jpeg')}
-        
         hf_response = requests.post(HF_API_URL, headers=headers, files=hf_files)
         hf_response.raise_for_status()
         return hf_response.json()
@@ -75,7 +72,6 @@ def detect_objects_in_image_data(image_bytes):
         return None
 
 def is_bear_detected(api_response):
-    """檢查 API 回應中是否包含 'kumay'"""
     if api_response and isinstance(api_response.get('detections'), list):
         for item in api_response['detections']:
             if isinstance(item, dict) and item.get('label') == 'kumay':
@@ -99,7 +95,6 @@ def detect_bear_image():
         if not api_response:
              return jsonify({"success": False, "error": "模型偵測失敗，請檢查後端日誌"}), 500
 
-        # 6. 修正邏輯順序
         bear_is_detected = is_bear_detected(api_response)
         
         if bear_is_detected:
@@ -201,19 +196,49 @@ def analyze_video():
         print("Video analysis complete. Temporary file deleted.")
 
 @app.route('/api/map', methods=['GET'])
+@cache.cached(query_string=True)
 def get_bear_map():
+    print("Generating new map (not from cache)...")
     try:
-        file_path = 'src/台灣黑熊.csv' 
+        file_path = 'src/台灣黑熊.csv'
         df = pd.read_csv(file_path)
+        df['eventdate'] = pd.to_datetime(df['eventdate'], errors='coerce')
+        df = df.dropna(subset=['eventdate'])
+
+        # ✅【建議修改處】使用更靈活的日期篩選邏輯
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
+        try:
+            if start_date:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                df = df[df['eventdate'] >= start_dt]
+            if end_date:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                df = df[df['eventdate'] <= end_dt]
+        except ValueError:
+            return jsonify({"success": False, "error": "日期格式錯誤，請使用 YYYY-MM-DD"}), 400
+        # ✅【建議修改結束】
+
         taiwan_map = folium.Map(location=[23.97565, 120.97388], zoom_start=7)
         marker_cluster = MarkerCluster().add_to(taiwan_map)
-        for index, row in df.iterrows():
-            popup_html = f"<b>物種:</b> {row['vernacularname']}<br><b>日期:</b> {row['eventdate']}<br><b>紀錄者:</b> {row['recordedby']}"
+
+        for _, row in df.iterrows():
+            popup_html = f"""
+                <b>物種:</b> {row['vernacularname']}<br>
+                <b>日期:</b> {row['eventdate'].date()}<br>
+                <b>紀錄者:</b> {row['recordedby']}
+            """
             iframe = folium.IFrame(popup_html, width=200, height=100)
             popup = folium.Popup(iframe, max_width=200)
-            folium.Marker(location=[row['verbatimlatitude'], row['verbatimlongitude']], popup=popup, tooltip=f"{row['vernacularname']} - {row['eventdate']}").add_to(marker_cluster)
+            folium.Marker(
+                location=[row['verbatimlatitude'], row['verbatimlongitude']],
+                popup=popup,
+                tooltip=f"{row['vernacularname']} - {row['eventdate'].date()}"
+            ).add_to(marker_cluster)
+
         map_html = taiwan_map._repr_html_()
         return jsonify({"success": True, "map_html": map_html})
+
     except FileNotFoundError:
         return jsonify({"success": False, "error": "找不到地圖資料檔案"}), 404
     except Exception as e:
