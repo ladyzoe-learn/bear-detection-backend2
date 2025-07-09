@@ -200,7 +200,9 @@ def analyze_video():
 def get_bear_map():
     print("Generating new map (not from cache)...")
     try:
-        file_path = 'src/台灣黑熊.csv'
+
+        base_dir = os.path.dirname(__file__)
+        file_path = os.path.join(base_dir, '台灣黑熊.csv')
         df = pd.read_csv(file_path)
         df['eventdate'] = pd.to_datetime(df['eventdate'], errors='coerce')
         df = df.dropna(subset=['eventdate'])
