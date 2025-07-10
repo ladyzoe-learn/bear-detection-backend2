@@ -99,7 +99,7 @@ def detect_bear_image():
         
         if bear_is_detected:
             print("Image detection: Bear detected! Sending LINE notification...")
-            alert_message = "警告：偵測到台灣黑熊出沒（圖片分析），請注意安全！"
+            alert_message = "熊蹤跡預警，照片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
             send_line_broadcast_message(alert_message)
         
         response_data = {
@@ -174,7 +174,7 @@ def analyze_video():
 
             if not alert_sent and consecutive_bear_frames >= consecutive_frames_needed:
                 print("!!! ALERT TRIGGERED !!!")
-                alert_message = f"警告：影片中偵測到台灣黑熊連續出現超過 {alert_threshold_seconds} 秒！"
+                alert_message = f"熊蹤跡預警，影片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
                 send_line_broadcast_message(alert_message)
                 alert_sent = True
                 break
