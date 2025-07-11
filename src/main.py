@@ -22,7 +22,8 @@ from flask_caching import Cache
 
 # --- Flask App 初始化與設定 ---
 app = Flask(__name__)
-CORS(app, origins=["https://bear-detection-app.onrender.com"])
+# 我們在許可名單中，同時加入「線上前端網址」和「本地前端網址」
+CORS(app, origins=["https://bear-detection-app.onrender.com", "http://localhost:5173"])
 
 # --- 快取設定 ---
 cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 3600})
@@ -196,18 +197,16 @@ def analyze_video():
         print("Video analysis complete. Temporary file deleted.")
 
 @app.route('/api/map', methods=['GET'])
-@cache.cached(query_string=True)
+# @cache.cached(query_string=True) # 我們改變了回傳內容，先移除快取
 def get_bear_map():
-    print("Generating new map (not from cache)...")
+    print("Providing map data...")
     try:
-
-        base_dir = os.path.dirname(__file__)
-        file_path = os.path.join(base_dir, '台灣黑熊.csv')
+        file_path = 'src/台灣黑熊.csv'
         df = pd.read_csv(file_path)
         df['eventdate'] = pd.to_datetime(df['eventdate'], errors='coerce')
-        df = df.dropna(subset=['eventdate'])
+        df.dropna(subset=['eventdate', 'verbatimlatitude', 'verbatimlongitude'], inplace=True)
 
-        # ✅【建議修改處】使用更靈活的日期篩選邏輯
+        # 日期篩選邏輯
         start_date = request.args.get('start')
         end_date = request.args.get('end')
         try:
@@ -219,32 +218,26 @@ def get_bear_map():
                 df = df[df['eventdate'] <= end_dt]
         except ValueError:
             return jsonify({"success": False, "error": "日期格式錯誤，請使用 YYYY-MM-DD"}), 400
-        # ✅【建議修改結束】
 
-        taiwan_map = folium.Map(location=[23.97565, 120.97388], zoom_start=7)
-        marker_cluster = MarkerCluster().add_to(taiwan_map)
-
+        # ✅【核心】不再產生 HTML，而是產生一個 JSON 陣列
+        locations = []
         for _, row in df.iterrows():
-            popup_html = f"""
-                <b>事件ID:</b> {row['occurrenceid']}<br>
-                <b>日期:</b> {row['eventdate'].date()}<br>
-    
-            """
-            iframe = folium.IFrame(popup_html, width=200, height=100)
-            popup = folium.Popup(iframe, max_width=200)
-            folium.Marker(
-                location=[row['verbatimlatitude'], row['verbatimlongitude']],
-                popup=popup,
-                tooltip=f"{row['occurrenceid']} - {row['eventdate'].date()}"
-            ).add_to(marker_cluster)
-
-        map_html = taiwan_map._repr_html_()
-        return jsonify({"success": True, "map_html": map_html})
+            locations.append({
+                "lat": row['verbatimlatitude'],
+                "lng": row['verbatimlongitude'],
+                "popup_html": f"""
+                    <b>物種:</b> {row['vernacularname']}<br>
+                    <b>日期:</b> {row['eventdate'].date()}<br>
+                    <b>紀錄者:</b> {row['recordedby']}
+                """
+            })
+        
+        return jsonify({"success": True, "locations": locations})
 
     except FileNotFoundError:
         return jsonify({"success": False, "error": "找不到地圖資料檔案"}), 404
     except Exception as e:
-        print(f"地圖產生失敗: {e}")
+        print(f"地圖資料產生失敗: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "error": "產生熱點圖時發生錯誤"}), 500
 
