@@ -14,11 +14,60 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
 from folium.plugins import MarkerCluster
-from linebot import LineBotApi
-from linebot.models import TextSendMessage
-from linebot.exceptions import LineBotApiError
 from datetime import datetime
 from flask_caching import Cache
+
+# --- Telegram Bot 相關設定 ---
+class TelegramBot:
+    def __init__(self, bot_token, chat_id):
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.base_url = f"https://api.telegram.org/bot{bot_token}"
+    def send_message(self, message):
+        url = f"{self.base_url}/sendMessage"
+        data = {
+            "chat_id": self.chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        try:
+            response = requests.post(url, json=data)
+            return response.json()
+        except Exception as e:
+            print(f"發送訊息錯誤: {e}")
+            return None
+    def send_photo(self, photo_url, caption=""):
+        url = f"{self.base_url}/sendPhoto"
+        data = {
+            "chat_id": self.chat_id,
+            "photo": photo_url,
+            "caption": caption,
+            "parse_mode": "HTML"
+        }
+        try:
+            response = requests.post(url, json=data)
+            return response.json()
+        except Exception as e:
+            print(f"發送圖片錯誤: {e}")
+            return None
+
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+telegram_bot = TelegramBot(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+
+def send_bear_alert(confidence, image_url=None, location=None, timestamp=None):
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    alert_message = f"""
+🐻 <b>黑熊預警系統</b> 🚨\n\n⚠️ <b>偵測到疑似黑熊！</b>\n🎯 <b>信心度：{confidence:.2%}</b>\n🕐 <b>時間：{timestamp}</b>\n"""
+    if location:
+        alert_message += f"📍 <b>位置：{location}</b>\n"
+    alert_message += "\n請立即採取適當的安全措施！"
+    if image_url:
+        result = telegram_bot.send_photo(image_url, alert_message)
+    else:
+        result = telegram_bot.send_message(alert_message)
+    return result
 
 # --- Flask App 初始化與設定 ---
 app = Flask(__name__)
@@ -32,30 +81,9 @@ cache.init_app(app)
 # --- 環境變數讀取 ---
 HF_API_URL = os.getenv("HF_API_URL", "https://ladyzoe-bear-detector-api-docker.hf.space/predict")
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-
-# --- LINE 通知相關函式 ---
-line_bot_api = None
-if LINE_CHANNEL_ACCESS_TOKEN:
-    try:
-        line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-        print("LINE Bot API initialized successfully.")
-    except Exception as e:
-        print(f"Failed to initialize LINE Bot API: {e}")
-else:
-    print("LINE_CHANNEL_ACCESS_TOKEN not found in environment. LINE notification feature is disabled.")
-
-def send_line_broadcast_message(message_text):
-    if not line_bot_api:
-        print("LINE Bot API not initialized. Cannot send message.")
-        return
-    try:
-        line_bot_api.broadcast(TextSendMessage(text=message_text))
-        print("LINE broadcast message sent successfully.")
-    except LineBotApiError as e:
-        print(f"Error sending LINE broadcast message: {e.status_code} {e.error.message}")
-    except Exception as e:
-        print(f"An unexpected error occurred when sending LINE message: {e}")
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+print(f"--- DEBUG: HF_API_TOKEN loaded: {str(HF_API_TOKEN)[:5]}...") 
 
 # --- 偵測相關的共用函式 ---
 def detect_objects_in_image_data(image_bytes):
@@ -64,8 +92,12 @@ def detect_objects_in_image_data(image_bytes):
         return None
     try:
         headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-        hf_files = {'file': ('image.jpg', image_bytes, 'image/jpeg')}
+        # ✅【核心修改】將檔名固定為安全的 ASCII 字元，避免因中文檔名等造成編碼錯誤
+        safe_filename = "upload.jpg"
+        hf_files = {'file': (safe_filename, image_bytes, 'image/jpeg')}
         hf_response = requests.post(HF_API_URL, headers=headers, files=hf_files)
+        # print(f"--- DEBUG: Hugging Face response status code: {hf_response.status_code}")
+        # print(f"--- DEBUG: Hugging Face response text: {hf_response.text}")
         hf_response.raise_for_status()
         return hf_response.json()
     except requests.exceptions.RequestException as e:
@@ -97,17 +129,21 @@ def detect_bear_image():
              return jsonify({"success": False, "error": "模型偵測失敗，請檢查後端日誌"}), 500
 
         bear_is_detected = is_bear_detected(api_response)
-        
-        if bear_is_detected:
-            print("Image detection: Bear detected! Sending LINE notification...")
-            alert_message = "熊蹤跡預警，照片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
-            send_line_broadcast_message(alert_message)
+        confidence = 0.99 if bear_is_detected else 0
+        # 這裡可根據實際模型回傳調整 confidence
+        alert_sent = False
+        image_url = None # 若有圖片上傳服務可補上
+        if bear_is_detected and confidence >= 0.7:
+            print("Image detection: Bear detected! Sending Telegram alert...")
+            send_bear_alert(confidence=confidence, image_url=image_url, location="系統偵測區域")
+            alert_sent = True
         
         response_data = {
             "success": True,
             "bear_detected": bear_is_detected,
-            "confidence": 0.99 if bear_is_detected else 0,
-            "processed_image": base64.b64encode(image_bytes).decode('utf-8')
+            "confidence": confidence,
+            "processed_image": base64.b64encode(image_bytes).decode('utf-8'),
+            "alert_sent": alert_sent
         }
         return jsonify(response_data)
         
@@ -175,8 +211,9 @@ def analyze_video():
 
             if not alert_sent and consecutive_bear_frames >= consecutive_frames_needed:
                 print("!!! ALERT TRIGGERED !!!")
-                alert_message = f"熊蹤跡預警，影片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
-                send_line_broadcast_message(alert_message)
+                # 我們可以直接呼叫 send_bear_alert 函式，它會自動產生訊息
+                # 由於影片幀沒有直接的圖片URL，所以 image_url 設為 None
+                send_bear_alert(confidence=0.99, image_url=None, location="影片偵測區域") # 👈 修正
                 alert_sent = True
                 break
         
