@@ -70,15 +70,7 @@ telegram_bot = TelegramBot(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
 # --- 通知發送的共用函式 ---
 def send_bear_alert(confidence, image_url=None, location=None):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    alert_message = f"""
-🐻 <b>黑熊預警系統</b> 🚨\n
-⚠️ <b>偵測到疑似黑熊！</b>
-🎯 <b>信心度：{confidence:.2%}</b>
-🕐 <b>時間：{timestamp}</b>
-"""
-    if location:
-        alert_message += f"📍 <b>位置：{location}</b>\n"
-    alert_message += "\n請立即採取適當的安全措施！"
+    alert_message = "熊蹤跡預警，照片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
 
     if image_url:
         return telegram_bot.send_photo(image_url, alert_message)
