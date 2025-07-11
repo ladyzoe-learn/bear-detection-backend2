@@ -154,109 +154,86 @@ def detect_bear_image():
 def analyze_video():
     if 'video' not in request.files:
         return jsonify({"success": False, "error": "沒有上傳影片檔案"}), 400
-    file = request.files['video']
-    if file.filename == '':
+    video_file = request.files['video']
+    if video_file.filename == '':
         return jsonify({"success": False, "error": "沒有選擇檔案"}), 400
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp:
-        temp.write(request.files['video'].read())
+        temp.write(video_file.read())
         temp_video_path = temp.name
 
+    cap = None
     try:
-        # 2. 使用 OpenCV 打開影片
         cap = cv2.VideoCapture(temp_video_path)
         if not cap.isOpened():
-            return jsonify({"success": False, "error": "無法打開影片檔案"}), 500
+            return jsonify({"success": False, "error": "無法讀取影片檔案"}), 500
 
-        # 3. 獲取影片屬性與設定參數
+        # --- FPS fallback ---
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps == 0:
-            return jsonify({"success": False, "error": "無法讀取影片的FPS"}), 500
+            print("⚠️ FPS 無法讀取，使用預設 30 FPS")
+            fps = 30
 
-        # --- 偵測邏輯參數 ---
-        alert_threshold_seconds = 3.0  # 連續 3 秒觸發警報
-        frames_to_process_per_second = 1 # 每秒抽 1 幀進行分析 (可調整)
-
-        # 計算需要跳過的幀數
+        # --- 偵測邏輯設定 ---
+        alert_threshold_seconds = 3.0  # 需連續 3 秒偵測才發警報
+        frames_to_process_per_second = 1.0
         frames_to_skip = max(1, int(fps / frames_to_process_per_second))
-        # 計算觸發警報需要連續偵測到的幀數
         consecutive_frames_needed = int(alert_threshold_seconds * frames_to_process_per_second)
 
-        # --- 計數器與旗標 ---
-        consecutive_bear_frames = 0
-        max_consecutive_duration = 0.0
-        alert_sent = False
+        # --- 初始化 ---
         frame_count = 0
+        consecutive_bear_frames = 0
+        max_consecutive_bear_frames = 0
+        highest_confidence = 0.0
 
-        print(f"Analyzing video: FPS={fps}, Processing {frames_to_process_per_second} frames/sec.")
-        print(f"Alert threshold: {consecutive_frames_needed} consecutive frames.")
-
-        # 4. 迴圈讀取影片幀
         while cap.isOpened():
             ret, frame = cap.read()
-            # 如果影片結束，就跳出迴圈
             if not ret:
                 break
 
-            frame_count += 1
-            # 5. 抽幀邏輯
             if frame_count % frames_to_skip != 0:
+                frame_count += 1
                 continue
+            frame_count += 1
 
-            print(f"Processing frame #{frame_count}...")
+            _, encoded = cv2.imencode(".jpg", frame)
+            api_response = detect_objects_in_image_data(encoded.tobytes())
 
-            # 6. 處理當前幀
-            # 將 OpenCV 的 frame (Numpy array) 編碼成 JPG 格式的二進位數據
-            is_success, buffer = cv2.imencode(".jpg", frame)
-            if not is_success:
-                continue
-            image_bytes = buffer.tobytes()
+            detected, confidence = is_bear_detected(api_response)
 
-            # 7. 發送到模型進行偵測
-            api_response = detect_objects_in_image_data(image_bytes)
-
-            # 8. 更新連續計數器
-            detected, confidence = is_bear_detected(api_response) # Get confidence here
             if detected:
                 consecutive_bear_frames += 1
-                print(f"  BEAR DETECTED! Consecutive frames: {consecutive_bear_frames}")
+                highest_confidence = max(highest_confidence, confidence)
+                max_consecutive_bear_frames = max(max_consecutive_bear_frames, consecutive_bear_frames)
+                print(f"✅ 偵測到，第 {frame_count} 幀，連續 {consecutive_bear_frames} 幀")
             else:
-                # 如果中斷了，計算這一次連續的總時長
-                current_duration = (consecutive_bear_frames / frames_to_process_per_second)
-                max_consecutive_duration = max(max_consecutive_duration, current_duration)
-                # 歸零計數器
                 consecutive_bear_frames = 0
 
-            # 9. 檢查是否觸發警報
-            if not alert_sent and consecutive_bear_frames >= consecutive_frames_needed:
-                print("!!! ALERT TRIGGERED !!! Bear detected for over 2 seconds.")
-                # Use the user's send_bear_alert function
-                send_bear_alert(confidence=confidence, image_url=None, location="影片偵測區域")
-                alert_sent = True
-                # (可選) 觸發後直接跳出迴圈，節省運算資源
-                # break
+        # --- 跑完整部影片後再決定是否警報 ---
+        alert_sent = False
+        if max_consecutive_bear_frames >= consecutive_frames_needed:
+            send_bear_alert(
+                confidence=highest_confidence,
+                image_url=None,
+                location="影片偵測區域"
+            )
+            alert_sent = True
+            print("🚨 整體分析後觸發警報")
 
-        # 迴圈結束後，最後再更新一次最大連續時間
-        final_duration = (consecutive_bear_frames / frames_to_process_per_second)
-        max_consecutive_duration = max(max_consecutive_duration, final_duration)
-
-        # 10. 準備回傳結果
-        response_data = {
+        return jsonify({
             "success": True,
-            "alert_sent": alert_sent,
-            "max_consecutive_duration_seconds": round(max_consecutive_duration, 2),
-            "video_fps": fps,
-        }
-        return jsonify(response_data)
+            "bear_detected": alert_sent,
+            "confidence": highest_confidence,
+            "alert_sent": alert_sent
+        })
 
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "error": f"伺服器處理影片時發生錯誤: {e}"}), 500
     finally:
-        # 11. 清理工作
-        cap.release()
-        os.unlink(temp_video_path) # 刪除暫存檔案
-        print("Video analysis complete. Temporary file deleted.")
-
-cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 3600})
-cache.init_app(app)
+        if cap:
+            cap.release()
+        os.remove(temp_video_path)
 
 @app.route('/api/map', methods=['GET'])
 @cache.cached(query_string=True)  # 根據不同 query string 快取對應 map
