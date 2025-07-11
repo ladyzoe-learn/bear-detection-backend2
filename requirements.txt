@@ -4,7 +4,6 @@ Flask-Cors
 Pillow
 pandas
 folium
-line-bot-sdk
 opencv-python
 numpy
 Flask-Caching
