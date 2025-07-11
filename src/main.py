@@ -55,14 +55,14 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 telegram_bot = TelegramBot(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
 
-def send_bear_alert(confidence, image_url=None, location=None, timestamp=None, source_type="照片"):
+def send_bear_alert(confidence, image_url=None, location=None, timestamp=None):
     if timestamp is None:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # 根據來源類型決定訊息內容
-    if source_type == "影片":
-        alert_message = "熊蹤跡預警，影片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
-    else:
-        alert_message = "熊蹤跡預警，照片偵測到 台灣黑熊並即將進入生活共同圈，請保持安全距離並提高警覺！"
+    alert_message = f"""
+🐻 <b>黑熊預警系統</b> 🚨\n\n⚠️ <b>偵測到疑似黑熊！</b>\n🎯 <b>信心度：{confidence:.2%}</b>\n🕐 <b>時間：{timestamp}</b>\n"""
+    if location:
+        alert_message += f"📍 <b>位置：{location}</b>\n"
+    alert_message += "\n請立即採取適當的安全措施！"
     if image_url:
         result = telegram_bot.send_photo(image_url, alert_message)
     else:
@@ -124,16 +124,20 @@ def detect_bear_image():
     try:
         image_bytes = file.read()
         api_response = detect_objects_in_image_data(image_bytes)
+        
         if not api_response:
              return jsonify({"success": False, "error": "模型偵測失敗，請檢查後端日誌"}), 500
+
         bear_is_detected = is_bear_detected(api_response)
         confidence = 0.99 if bear_is_detected else 0
+        # 這裡可根據實際模型回傳調整 confidence
         alert_sent = False
         image_url = None # 若有圖片上傳服務可補上
         if bear_is_detected and confidence >= 0.7:
             print("Image detection: Bear detected! Sending Telegram alert...")
-            send_bear_alert(confidence=confidence, image_url=image_url, location="系統偵測區域", source_type="照片")
+            send_bear_alert(confidence=confidence, image_url=image_url, location="系統偵測區域")
             alert_sent = True
+        
         response_data = {
             "success": True,
             "bear_detected": bear_is_detected,
@@ -142,6 +146,7 @@ def detect_bear_image():
             "alert_sent": alert_sent
         }
         return jsonify(response_data)
+        
     except Exception as e:
         print(f"圖片偵測時發生錯誤: {e}")
         traceback.print_exc()
@@ -206,7 +211,9 @@ def analyze_video():
 
             if not alert_sent and consecutive_bear_frames >= consecutive_frames_needed:
                 print("!!! ALERT TRIGGERED !!!")
-                send_bear_alert(confidence=0.99, image_url=None, location="影片偵測區域", source_type="影片")
+                # 我們可以直接呼叫 send_bear_alert 函式，它會自動產生訊息
+                # 由於影片幀沒有直接的圖片URL，所以 image_url 設為 None
+                send_bear_alert(confidence=0.99, image_url=None, location="影片偵測區域") # 👈 修正
                 alert_sent = True
                 break
         
@@ -220,6 +227,7 @@ def analyze_video():
             "video_fps": fps,
         }
         return jsonify(response_data)
+
     finally:
         cap.release()
         os.unlink(temp_video_path)
