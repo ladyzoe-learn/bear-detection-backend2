@@ -160,16 +160,23 @@ def detect_bear_image():
 
 @app.route('/api/analyze_video', methods=['POST'])
 def analyze_video():
-    # ... (前面的程式碼不變)
+    if 'video' not in request.files:
+        return jsonify({"success": False, "error": "沒有上傳影片檔案"}), 400
+    file = request.files['video']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "沒有選擇檔案"}), 400
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp:
         temp.write(request.files['video'].read())
         temp_video_path = temp.name
 
     try:
         cap = cv2.VideoCapture(temp_video_path)
-        # ...
         highest_confidence_in_video = 0.0
-        
+        consecutive_bear_frames = 0 # 定義並初始化變數
+        consecutive_frames_needed = 3 # 定義並初始化變數，可根據需求調整
+        alert_sent = False # 定義並初始化變數
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
@@ -177,15 +184,15 @@ def analyze_video():
             # ... (抽幀邏輯不變)
 
             api_response = detect_objects_in_image_data(cv2.imencode(".jpg", frame)[1].tobytes())
-            
+
             detected, confidence = is_bear_detected(api_response) # 5. 使用新函式
-            
+
             if detected:
                 consecutive_bear_frames += 1
                 highest_confidence_in_video = max(highest_confidence_in_video, confidence)
                 print(f"  BEAR DETECTED! (Confidence: {confidence:.2%}) Consecutive frames: {consecutive_bear_frames}")
             else:
-                # ... (計數器歸零邏輯不變)
+                consecutive_bear_frames = 0 # 修正縮排
 
             if not alert_sent and consecutive_bear_frames >= consecutive_frames_needed:
                 print("!!! ALERT TRIGGERED !!!")
@@ -193,10 +200,74 @@ def analyze_video():
                 send_bear_alert(confidence=highest_confidence_in_video, image_url=None, location="影片偵測區域")
                 alert_sent = True
                 break
-        
-        # ... (後續回傳 JSON 的邏輯不變)
-        return jsonify(...)
-    finally:
-        # ...
-        
-# ... (get_bear_map 和 if __name__ == '__main__' 區塊不變) ...
+
+        cap.release() # 修正縮排
+        os.remove(temp_video_path) # 修正縮排
+
+        response_data = {
+            "success": True,
+            "bear_detected": highest_confidence_in_video >= 0.7,
+            "confidence": highest_confidence_in_video,
+            "alert_sent": alert_sent
+        }
+        return jsonify(response_data)
+    except Exception as e:
+        print(f"影片分析時發生錯誤: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "伺服器處理影片時發生錯誤"}), 500
+
+@app.route('/api/map', methods=['GET'])
+@cache.cached(query_string=True)  # 根據不同 query string 快取對應 map
+def get_bear_map():
+    try:
+        file_path = 'src/台灣黑熊.csv'
+        df = pd.read_csv(file_path)
+
+        # 轉換 eventdate 欄位為 datetime
+        df['eventdate'] = pd.to_datetime(df['eventdate'], errors='coerce')
+        df = df.dropna(subset=['eventdate'])  # 避免無效日期造成錯誤
+
+        # 解析前端傳入的起訖日期（若有）
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
+        if start_date and end_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                df = df[(df['eventdate'] >= start_dt) & (df['eventdate'] <= end_dt)]
+            except Exception as e:
+                return jsonify({"success": False, "error": "日期格式錯誤，請使用 YYYY-MM-DD"}), 400
+
+        # 建立地圖物件
+        taiwan_map = folium.Map(location=[23.97565, 120.97388], zoom_start=7)
+        marker_cluster = MarkerCluster().add_to(taiwan_map)
+
+        # 加入地圖標記
+        for _, row in df.iterrows():
+            popup_html = f"""
+                <b>物種:</b> {row['vernacularname']}<br>
+                <b>日期:</b> {row['eventdate'].date()}<br>
+                <b>紀錄者:</b> {row['recordedby']}
+            """
+            iframe = folium.IFrame(popup_html, width=200, height=100)
+            popup = folium.Popup(iframe, max_width=200)
+            folium.Marker(
+                location=[row['verbatimlatitude'], row['verbatimlongitude']],
+                popup=popup,
+                tooltip=f"{row['vernacularname']} - {row['eventdate'].date()}"
+            ).add_to(marker_cluster)
+
+        # 轉成 HTML
+        map_html = taiwan_map._repr_html_()
+        return jsonify({"success": True, "map_html": map_html})
+
+    except FileNotFoundError:
+        return jsonify({"success": False, "error": "找不到地圖資料檔案"}), 404
+    except Exception as e:
+        print(f"地圖產生失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "產生熱點圖時發生錯誤"}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
