@@ -174,8 +174,8 @@ def analyze_video():
             return jsonify({"success": False, "error": "無法讀取影片的FPS"}), 500
 
         # --- 偵測邏輯參數 ---
-        alert_threshold_seconds = 2.0  # 連續 2 秒觸發警報
-        frames_to_process_per_second = 2 # 每秒抽 2 幀進行分析 (可調整)
+        alert_threshold_seconds = 3.0  # 連續 3 秒觸發警報
+        frames_to_process_per_second = 1 # 每秒抽 1 幀進行分析 (可調整)
 
         # 計算需要跳過的幀數
         frames_to_skip = max(1, int(fps / frames_to_process_per_second))
