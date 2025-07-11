@@ -255,6 +255,9 @@ def analyze_video():
         os.unlink(temp_video_path) # 刪除暫存檔案
         print("Video analysis complete. Temporary file deleted.")
 
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 3600})
+cache.init_app(app)
+
 @app.route('/api/map', methods=['GET'])
 @cache.cached(query_string=True)  # 根據不同 query string 快取對應 map
 def get_bear_map():
