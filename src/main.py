@@ -19,8 +19,8 @@ from flask_caching import Cache
 
 # --- 1. 集中讀取所有環境變數 ---
 # Telegram
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+telegram_API= os.getenv('TELEGRAM_BOT_TOKEN')
+telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
 # Hugging Face
 HF_API_URL = os.getenv("HF_API_URL", "https://ladyzoe-bear-detector-api-docker.hf.space/predict")
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
