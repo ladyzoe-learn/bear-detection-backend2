@@ -68,11 +68,8 @@ def send_bear_alert(confidence, image_url=None, location=None):
         f"🐻 <b>黑熊預警系統</b> 🚨\n\n"
         f"⚠️ <b>偵測到疑似黑熊！</b>\n"
         f"🎯 <b>信心度：{confidence:.2%}</b>\n"
-        f"🕐 <b>時間：{timestamp}</b>\n"
+        f"🕒 <b>\n請立即採取適當的安全措施！</b>\n"
     )
-    if location:
-        alert_message += f"📍 <b>位置：{location}</b>\n"
-    alert_message += "\n請立即採取適當的安全措施！"
 
     if image_url:
         telegram_bot.send_photo(image_url, alert_message)
