@@ -171,8 +171,8 @@ def analyze_video():
             print("⚠️ FPS 無法讀取，使用預設 30 FPS")
             fps = 30
 
-        alert_threshold_seconds = 2.0  # 恢復為 2 秒
-        frames_to_process_per_second = 0.5 # 保持較低的抽幀率以優化性能
+        alert_threshold_seconds = 3.0  # 恢復為 2 秒
+        frames_to_process_per_second = 1 # 保持較低的抽幀率以優化性能
         frames_to_skip = max(1, int(fps / frames_to_process_per_second))
         consecutive_frames_needed = int(alert_threshold_seconds * frames_to_process_per_second)
 
