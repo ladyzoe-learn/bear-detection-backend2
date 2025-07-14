@@ -68,7 +68,7 @@ def send_bear_alert(confidence, image_url=None, location=None):
         f"🐻 <b>黑熊預警系統</b> 🚨\n\n"
         f"⚠️ <b>偵測到疑似黑熊！</b>\n"
         f"🎯 <b>信心度：{confidence:.2%}</b>\n"
-        f"🕒 <b>\n請立即採取適當的安全措施！</b>\n"
+        f" <b>\n請立即採取適當的安全措施！</b>\n"
     )
 
     if image_url:
