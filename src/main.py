@@ -289,4 +289,4 @@ def get_bear_map():
         return jsonify({"success": False, "error": "產生熱點圖時發生錯誤"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
