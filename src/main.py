@@ -95,7 +95,6 @@ def detect_objects_in_image_data(image_bytes):
         hf_files = {'file': (safe_filename, image_bytes, 'image/jpeg')}
         hf_response = requests.post(HF_API_URL, headers=headers, files=hf_files)
         hf_response.raise_for_status()
-        print(f"--- DEBUG: Full Hugging Face Response: {hf_response.json()}")
         return hf_response.json()
     except requests.exceptions.RequestException as e:
         print(f"Hugging Face API request failed: {e}")
