@@ -95,6 +95,7 @@ def detect_objects_in_image_data(image_bytes):
         hf_files = {'file': (safe_filename, image_bytes, 'image/jpeg')}
         hf_response = requests.post(HF_API_URL, headers=headers, files=hf_files)
         hf_response.raise_for_status()
+        print(f"--- DEBUG: Full Hugging Face Response: {hf_response.json()}")
         return hf_response.json()
     except requests.exceptions.RequestException as e:
         print(f"Hugging Face API request failed: {e}")
@@ -171,7 +172,7 @@ def analyze_video():
             print("⚠️ FPS 無法讀取，使用預設 30 FPS")
             fps = 30
 
-        alert_threshold_seconds = 3.0  # 恢復為 2 秒
+        alert_threshold_seconds = 3.0  # 恢復為 3 秒
         frames_to_process_per_second = 1 # 保持較低的抽幀率以優化性能
         frames_to_skip = max(1, int(fps / frames_to_process_per_second))
         consecutive_frames_needed = int(alert_threshold_seconds * frames_to_process_per_second)
