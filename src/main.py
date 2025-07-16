@@ -103,7 +103,7 @@ def detect_objects_in_image_data(image_bytes):
 
 def is_bear_detected(api_response):
     if api_response and isinstance(api_response.get('detections'), list):
-        bear_detections = [item for item in api_response['detections'] if isinstance(item, dict) and item.get('label') == 'kumay']
+        bear_detections = [item for item in api_response['detections'] if isinstance(item, dict) and item.get('label') == 'item']
         if bear_detections:
             highest_confidence = max(item.get('confidence', 0) for item in bear_detections)
             return True, highest_confidence
