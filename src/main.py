@@ -257,9 +257,8 @@ def get_bear_map():
                 "lat": row['verbatimlatitude'],
                 "lng": row['verbatimlongitude'],
                 "popup_html": f"""
-                    <b>物種:</b> {row['vernacularname']}<br>
+                    <b>事件ID:</b> {row['occurrenceid']}<br>
                     <b>日期:</b> {row['eventdate'].date()}<br>
-                    <b>紀錄者:</b> {row['recordedby']}
                 """
             })
         
